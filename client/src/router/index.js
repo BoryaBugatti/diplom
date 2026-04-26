@@ -3,6 +3,7 @@ import App from "@/App.vue";
 import AuthPage from "@/pages/AuthPage.vue";
 import MainPage from '@/pages/MainPage.vue';
 import UserLK from '@/pages/UserLK.vue';
+import Reg from "@/components/RegisterForm.vue"
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -13,23 +14,17 @@ const router = createRouter({
     {
       path: '/MainPage',
       component: MainPage,
-      meta: { requiresAuth: true }
     },
     {
       path: '/UserLK',
       component: UserLK,
+    },
+    {
+      path: '/Register',
+      component: Reg,
     }
   ],
 })
 
-router.beforeEach((to, from, next) => {
-  const isAuthenticated = !!localStorage.getItem("user_email");
-  if (to.meta.requiresAuth && !isAuthenticated)
-    next('/');
-  else if (to.path === '/login' && isAuthenticated)
-    next('/MainPage');
-  else
-    next();
-})
 
 export default router

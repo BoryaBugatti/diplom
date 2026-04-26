@@ -10,7 +10,7 @@ import torch
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    model_path = "../LLM/tender_lora_adapter_v2"  
+    model_path = "../LLM/qwen2.5-tender-lora-3060/checkpoint-9"  
     base_model_name = "Qwen/Qwen2.5-3B-Instruct"
     
     tokenizer = AutoTokenizer.from_pretrained(base_model_name, trust_remote_code=True)

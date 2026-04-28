@@ -14,17 +14,18 @@
 
     <div class="dashboard-content">
       <div class="main-column">
+        <!-- Карточка загрузки -->
         <Card class="upload-card">
           <template #title>
             <i class="pi pi-cloud-upload"></i> Загрузить тендерную документацию
           </template>
-          <template #subtitle>Поддерживаются форматы PDF, DOCX, XLSX, ZIP (до 50 МБ)</template>
+          <template #subtitle>Поддерживаются форматы PDF, DOCX, XLSX, TXT (до 10 МБ)</template>
           <template #content>
             <FileUpload
               name="tender-doc"
               :multiple="false"
-              accept=".pdf,.docx,.xlsx,.zip"
-              :maxFileSize="52428800"
+              accept=".pdf,.docx,.xlsx,.txt"
+              :maxFileSize="10485760"
               @select="onFileSelect"
               @clear="clearFile"
               :auto="false"
@@ -46,16 +47,17 @@
                   <div class="file-info">
                     <i class="pi pi-file-pdf"></i>
                     <span>{{ files[0].name }} ({{ formatFileSize(files[0].size) }})</span>
-                    <Button icon="pi pi-times" severity="danger" text rounded @click="removeFileCallback" />
+                    <Button icon="pi pi-times" severity="danger" text rounded @click="removeFileCallbackAndClear" />
                   </div>
                   <ProgressBar v-if="uploadProgress > 0" :value="uploadProgress" class="upload-progress" />
                   <Button
                     v-if="uploadProgress === 0"
-                    label="Загрузить и добавить в список"
+                    label="Загрузить и проанализировать"
                     icon="pi pi-upload"
                     severity="primary"
                     class="upload-btn"
-                    @click="simulateUpload"
+                    :disabled="!selectedFile"
+                    @click="uploadAndAnalyze"
                   />
                 </div>
                 <div v-if="!files || files.length === 0" class="p-text-center p-m-3">
@@ -67,6 +69,40 @@
           </template>
         </Card>
 
+        <!-- Результаты анализа -->
+        <Card v-if="analysisResult" class="analysis-card">
+          <template #title>
+            <i class="pi pi-chart-line"></i> Результаты анализа
+          </template>
+          <template #content>
+            <div class="analysis-content">
+              <div class="analysis-section">
+                <h4><i class="pi pi-info-circle"></i> Название тендера</h4>
+                <p>{{ analysisResult.tender_summary.name || 'Не указано' }}</p>
+              </div>
+              <div class="analysis-section">
+                <h4><i class="pi pi-align-left"></i> Краткое описание</h4>
+                <p>{{ analysisResult.tender_summary.description || 'Нет описания' }}</p>
+              </div>
+              <div class="analysis-section">
+                <h4><i class="pi pi-list"></i> Все требования</h4>
+                <ul class="requirements-list">
+                  <li v-for="(req, idx) in analysisResult.all_requirements" :key="idx">{{ req }}</li>
+                  <li v-if="analysisResult.all_requirements.length === 0">Не найдены</li>
+                </ul>
+              </div>
+              <div class="analysis-section">
+                <h4><i class="pi pi-star-fill"></i> Ключевые требования</h4>
+                <ul class="requirements-list key">
+                  <li v-for="(req, idx) in analysisResult.key_requirements" :key="idx">{{ req }}</li>
+                  <li v-if="analysisResult.key_requirements.length === 0">Не выделены</li>
+                </ul>
+              </div>
+            </div>
+            <Button label="Очистить результаты" icon="pi pi-trash" severity="secondary" outlined class="clear-btn" @click="clearAnalysis" />
+          </template>
+        </Card>
+
         <!-- Статистика (3 карточки) -->
         <div class="stats-grid">
           <Card class="stat-card">
@@ -74,7 +110,7 @@
               <div class="stat-content">
                 <i class="pi pi-folder-open stat-icon"></i>
                 <div class="stat-info">
-                  <h3>124</h3>
+                  <h3>{{ recentDocuments.length }}</h3>
                   <p>Всего тендеров</p>
                 </div>
               </div>
@@ -85,19 +121,8 @@
               <div class="stat-content">
                 <i class="pi pi-chart-line stat-icon"></i>
                 <div class="stat-info">
-                  <h3>86</h3>
+                  <h3>{{ analyzedCount }}</h3>
                   <p>Проанализировано</p>
-                </div>
-              </div>
-            </template>
-          </Card>
-          <Card class="stat-card">
-            <template #content>
-              <div class="stat-content">
-                <i class="pi pi-exclamation-triangle stat-icon"></i>
-                <div class="stat-info">
-                  <h3>12</h3>
-                  <p>Высоких рисков</p>
                 </div>
               </div>
             </template>
@@ -118,38 +143,12 @@
                   <div class="doc-name">{{ doc.name }}</div>
                   <div class="doc-meta">{{ doc.date }} • {{ doc.status }}</div>
                 </div>
-                <Button icon="pi pi-microscope" severity="info" text rounded @click="analyzeDocument(doc)" />
+                <Button icon="pi pi-microscope" severity="info" text rounded @click="viewAnalysis(doc)" />
               </div>
               <div v-if="recentDocuments.length === 0" class="empty-message">
                 <i class="pi pi-inbox"></i> Нет загруженных документов
               </div>
             </div>
-          </template>
-        </Card>
-
-        <Card class="active-tenders">
-          <template #title>
-            <i class="pi pi-tasks"></i> Активные тендеры
-          </template>
-          <template #content>
-            <div class="tender-list">
-              <div class="tender-item">
-                <div class="tender-title">Поставка медоборудования</div>
-                <div class="tender-deadline">Дедлайн: 30.05.2026</div>
-                <Badge value="На анализе" severity="warn" />
-              </div>
-              <div class="tender-item">
-                <div class="tender-title">Строительство автодороги</div>
-                <div class="tender-deadline">Дедлайн: 15.06.2026</div>
-                <Badge value="Низкий риск" severity="success" />
-              </div>
-              <div class="tender-item">
-                <div class="tender-title">ИТ-инфраструктура</div>
-                <div class="tender-deadline">Дедлайн: 01.06.2026</div>
-                <Badge value="Высокий риск" severity="danger" />
-              </div>
-            </div>
-            <Button label="Все тендеры →" link class="more-btn" />
           </template>
         </Card>
       </div>
@@ -160,9 +159,11 @@
 </template>
 
 <script setup>
-import { ref, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import axios from 'axios'
+
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Avatar from 'primevue/avatar'
@@ -176,9 +177,13 @@ const user_name = localStorage.getItem('user_name') || 'Пользователь
 const selectedFile = ref(null)
 const uploadProgress = ref(0)
 const recentDocuments = ref([])
+const analysisResult = ref(null)
 
 const router = useRouter()
 const toast = useToast()
+
+const analyzedCount = computed(() => recentDocuments.value.filter(doc => doc.status === 'Проанализирован').length)
+const highRiskCount = computed(() => recentDocuments.value.filter(doc => doc.risk === 'high').length)
 
 function formatFileSize(bytes) {
   if (bytes === 0) return '0 Bytes'
@@ -191,8 +196,8 @@ function formatFileSize(bytes) {
 function onFileSelect(event) {
   const file = event.files[0]
   if (file) {
-    if (file.size > 50 * 1024 * 1024) {
-      toast.add({ severity: 'error', summary: 'Ошибка', detail: 'Файл превышает 50 МБ', life: 3000 })
+    if (file.size > 10 * 1024 * 1024) {
+      toast.add({ severity: 'error', summary: 'Ошибка', detail: 'Файл превышает 10 МБ', life: 3000 })
       return
     }
     selectedFile.value = file
@@ -205,31 +210,77 @@ function clearFile() {
   uploadProgress.value = 0
 }
 
-function simulateUpload() {
-  if (!selectedFile.value) return
-
-  let progress = 0
-  const interval = setInterval(() => {
-    progress += 10
-    uploadProgress.value = progress
-    if (progress >= 100) {
-      clearInterval(interval)
-      const newDoc = {
-        id: Date.now(),
-        name: selectedFile.value.name,
-        date: new Date().toLocaleDateString('ru-RU'),
-        status: 'Загружен',
-        file: selectedFile.value
-      }
-      recentDocuments.value.unshift(newDoc)
-      toast.add({ severity: 'success', summary: 'Успешно', detail: `Файл "${selectedFile.value.name}" загружен`, life: 3000 })
-      clearFile()
-    }
-  }, 150)
+function removeFileCallbackAndClear() {
+  selectedFile.value = null
+  uploadProgress.value = 0
 }
 
-function analyzeDocument(doc) {
-  toast.add({ severity: 'info', summary: 'Анализ', detail: `Запущен анализ документа "${doc.name}" (демо-режим)`, life: 3000 })
+function clearAnalysis() {
+  analysisResult.value = null
+}
+
+async function uploadAndAnalyze() {
+  if (!selectedFile.value) {
+    toast.add({ severity: 'warn', summary: 'Нет файла', detail: 'Выберите файл для анализа', life: 3000 })
+    return
+  }
+
+  const formData = new FormData()
+  formData.append('file', selectedFile.value)
+
+  uploadProgress.value = 0
+  const interval = setInterval(() => {
+    if (uploadProgress.value < 90) {
+      uploadProgress.value += 10
+    }
+  }, 100)
+
+  try {
+    const response = await axios.post('http://localhost:8000/TenderAnalysis', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,
+      withCredentials: true
+    })
+    clearInterval(interval)
+    uploadProgress.value = 100
+
+    const resultData = response.data
+    analysisResult.value = resultData
+
+    const newDoc = {
+      id: Date.now(),
+      name: selectedFile.value.name,
+      date: new Date().toLocaleDateString('ru-RU'),
+      status: 'Проанализирован',
+      risk: resultData.key_requirements?.length > 5 ? 'high' : 'low',
+      analysis: resultData
+    }
+    recentDocuments.value.unshift(newDoc)
+
+    toast.add({ severity: 'success', summary: 'Анализ завершён', detail: `Файл "${selectedFile.value.name}" успешно проанализирован`, life: 5000 })
+
+    clearFile()
+  } catch (error) {
+    clearInterval(interval)
+    uploadProgress.value = 0
+    console.error('Ошибка анализа:', error)
+    let errorMsg = 'Ошибка при анализе документа'
+    if (error.response?.data?.detail) {
+      errorMsg = error.response.data.detail
+    } else if (error.message) {
+      errorMsg = error.message
+    }
+    toast.add({ severity: 'error', summary: 'Ошибка', detail: errorMsg, life: 7000 })
+  }
+}
+
+function viewAnalysis(doc) {
+  if (doc.analysis) {
+    analysisResult.value = doc.analysis
+    toast.add({ severity: 'info', summary: 'Загружен результат', detail: `Показан анализ документа "${doc.name}"`, life: 3000 })
+  } else {
+    toast.add({ severity: 'warn', summary: 'Нет данных', detail: 'Для этого документа анализ ещё не проводился', life: 3000 })
+  }
 }
 
 function GoToUserLk() {
@@ -237,9 +288,11 @@ function GoToUserLk() {
 }
 
 function logout() {
-  toast.add({ severity: 'info', summary: 'Выход', detail: 'Вы вышли из системы (демо-режим)', life: 3000 })
+  toast.add({ severity: 'info', summary: 'Выход', detail: 'Вы вышли из системы', life: 3000 })
   setTimeout(() => {
-    alert('В реальном приложении здесь будет переход на страницу авторизации')
+    localStorage.removeItem('user_email');
+    localStorage.removeItem('user_name');
+    router.push('/');
   }, 500)
 }
 
@@ -318,9 +371,8 @@ onUnmounted(() => {
 }
 
 .stats-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
+  display: flex;
+  justify-content: space-around;
 }
 .stat-card :deep(.p-card-content) {
   padding: 0.75rem;
@@ -343,6 +395,50 @@ onUnmounted(() => {
   font-size: 0.7rem;
   color: #5b6e8c;
   margin: 0;
+}
+
+/* Карточка анализа */
+.analysis-card {
+  margin-top: 0;
+}
+.analysis-section {
+  margin-bottom: 1.2rem;
+}
+.analysis-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  color: #1e293b;
+}
+.analysis-section p {
+  margin: 0;
+  line-height: 1.4;
+  background: #f1f5f9;
+  padding: 0.6rem;
+  border-radius: 12px;
+}
+.requirements-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  background: #f1f5f9;
+  border-radius: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.requirements-list li {
+  padding: 0.6rem;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.85rem;
+}
+.requirements-list.key li {
+  font-weight: 600;
+  color: #0f3b5c;
+}
+.clear-btn {
+  margin-top: 0.8rem;
 }
 
 .recent-list {

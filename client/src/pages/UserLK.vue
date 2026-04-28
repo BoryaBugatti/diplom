@@ -10,7 +10,7 @@
         label="На главную" 
         severity="secondary" 
         text 
-        @click="$router.push('/')" 
+        @click="$router.push('/MainPage')" 
       />
     </header>
 
@@ -18,8 +18,8 @@
       <!-- Приветствие и статистика -->
       <div class="greeting-stat">
         <div class="greeting">
-          <h1>Здравствуйте, {{ userName }} 👋</h1>
-          <p>Ваши документы и результаты их анализа</p>
+          <h1>Здравствуйте, {{ userName }}</h1>
+          <p>Ваши проанализированные тендеры</p>
         </div>
         <div class="stat-cards">
           <Card class="small-stat">
@@ -30,55 +30,39 @@
           </Card>
           <Card class="small-stat">
             <template #content>
-              <div class="stat-value">{{ analyzedDocs }}</div>
+              <div class="stat-value">{{ totalDocs }}</div>
               <div class="stat-label">Проанализировано</div>
             </template>
           </Card>
           <Card class="small-stat">
             <template #content>
-              <div class="stat-value">{{ highRiskDocs }}</div>
-              <div class="stat-label">С высоким риском</div>
+              <div class="stat-value">{{ highRiskCount }}</div>
+              <div class="stat-label">Высокого риска*</div>
             </template>
           </Card>
         </div>
       </div>
 
-      <!-- Фильтр и таблица документов -->
+      <!-- Таблица документов -->
       <Card class="docs-table-card">
         <template #title>
           <div class="table-title">
             <i class="pi pi-file-pdf"></i> Мои документы
-            <div class="filter-group">
-              <SelectButton 
-                v-model="filterStatus" 
-                :options="filterOptions" 
-                optionLabel="label" 
-                optionValue="value"
-              />
-            </div>
+            <!-- Фильтр можно расширить, пока оставляем простой -->
           </div>
         </template>
         <template #content>
           <DataTable 
-            :value="filteredDocuments" 
+            :value="documents" 
             paginator 
             :rows="5" 
             stripedRows
             class="p-datatable-sm"
+            :loading="loading"
           >
-            <Column field="name" header="Название" sortable></Column>
-            <Column field="uploadDate" header="Дата загрузки" sortable></Column>
-            <Column field="analysisStatus" header="Статус анализа">
-              <template #body="{ data }">
-                <Badge :value="data.analysisStatus" :severity="getStatusSeverity(data.analysisStatus)" />
-              </template>
-            </Column>
-            <Column field="risk" header="Результат анализа">
-              <template #body="{ data }">
-                <span v-if="data.risk" :class="getRiskClass(data.risk)">{{ data.risk }}</span>
-                <span v-else class="text-muted">—</span>
-              </template>
-            </Column>
+            <Column field="file_name" header="Название файла" sortable></Column>
+            <Column field="created_at" header="Дата анализа" sortable></Column>
+            <Column field="tender_name" header="Название тендера" sortable></Column>
             <Column header="Действия">
               <template #body="{ data }">
                 <Button 
@@ -95,34 +79,33 @@
       </Card>
     </div>
 
-    <!-- Диалог подробного анализа -->
+    <!-- Диалог детального анализа -->
     <Dialog 
       v-model:visible="detailsDialog" 
       header="Детали анализа документа" 
       :modal="true" 
-      :style="{ width: '550px' }"
+      :style="{ width: '700px' }"
     >
       <div v-if="selectedDoc" class="dialog-content">
-        <h3>{{ selectedDoc.name }}</h3>
-        <p><strong>Дата загрузки:</strong> {{ selectedDoc.uploadDate }}</p>
-        <p><strong>Статус анализа:</strong> 
-          <Badge :value="selectedDoc.analysisStatus" :severity="getStatusSeverity(selectedDoc.analysisStatus)" />
-        </p>
+        <h3>{{ selectedDoc.file_name }}</h3>
+        <p><strong>Название тендера:</strong> {{ selectedDoc.tender_name || '—' }}</p>
+        <p><strong>Описание тендера:</strong> {{ selectedDoc.tender_description || '—' }}</p>
+        <p><strong>Дата анализа:</strong> {{ selectedDoc.created_at }}</p>
+        
         <div class="analysis-block">
-          <strong>Результаты анализа (заглушка):</strong>
-          <div class="analysis-placeholder">
-            <div v-if="selectedDoc.risk === 'Высокий риск'" class="risk-high">
-              ⚠️ Обнаружены критические риски: несоответствие требованиям, завышенная цена.
-            </div>
-            <div v-else-if="selectedDoc.risk === 'Средний риск'" class="risk-medium">
-              ⚠️ Есть некоторые замечания по срокам и гарантийным обязательствам.
-            </div>
-            <div v-else-if="selectedDoc.risk === 'Низкий риск'" class="risk-low">
-              ✅ Документ соответствует основным критериям, риски минимальны.
-            </div>
-            <div v-else>
-              📄 Анализ ещё не выполнен. После обработки здесь появятся рекомендации.
-            </div>
+          <div class="requirement-section">
+            <strong>📋 Все требования:</strong>
+            <ul class="requirement-list" v-if="selectedDoc.all_requirements?.length">
+              <li v-for="(req, idx) in selectedDoc.all_requirements" :key="idx">{{ req }}</li>
+            </ul>
+            <div v-else class="empty-msg">Требования не извлечены</div>
+          </div>
+          <div class="requirement-section">
+            <strong>⭐ Ключевые требования:</strong>
+            <ul class="requirement-list key-requirements" v-if="selectedDoc.key_requirements?.length">
+              <li v-for="(req, idx) in selectedDoc.key_requirements" :key="idx">{{ req }}</li>
+            </ul>
+            <div v-else class="empty-msg">Ключевые требования не выделены</div>
           </div>
         </div>
       </div>
@@ -136,98 +119,56 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import axios from 'axios'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Badge from 'primevue/badge'
-import SelectButton from 'primevue/selectbutton'
 import Dialog from 'primevue/dialog'
 import Toast from 'primevue/toast'
 
 const toast = useToast()
 const userName = ref(localStorage.getItem('user_name') || 'Пользователь')
+const documents = ref([])
+const loading = ref(false)
 
-// Моковые данные документов (в будущем заменим на запрос к API)
-const documents = ref([
-  {
-    id: 1,
-    name: 'Тендер_медоборудование.pdf',
-    uploadDate: '20.04.2026',
-    analysisStatus: 'Завершён',
-    risk: 'Средний риск',
-    details: 'Обнаружены замечания по срокам поставки.'
-  },
-  {
-    id: 2,
-    name: 'Анализ_рисков_дорога.docx',
-    uploadDate: '18.04.2026',
-    analysisStatus: 'Завершён',
-    risk: 'Низкий риск',
-    details: 'Документ соответствует критериям.'
-  },
-  {
-    id: 3,
-    name: 'Финансовая_модель.xlsx',
-    uploadDate: '15.04.2026',
-    analysisStatus: 'Завершён',
-    risk: 'Высокий риск',
-    details: 'Завышенные финансовые показатели, несоответствие НМЦК.'
-  },
-  {
-    id: 4,
-    name: 'Техническое_задание.pdf',
-    uploadDate: '10.04.2026',
-    analysisStatus: 'В процессе',
-    risk: null,
-    details: 'Анализ запущен, ожидайте результат.'
-  },
-  {
-    id: 5,
-    name: 'Договор_оферта.docx',
-    uploadDate: '05.04.2026',
-    analysisStatus: 'Завершён',
-    risk: 'Низкий риск',
-    details: 'Риски отсутствуют, рекомендуется к участию.'
-  }
-])
-
-// Фильтрация
-const filterStatus = ref('all')
-const filterOptions = [
-  { label: 'Все', value: 'all' },
-  { label: 'Завершён', value: 'Завершён' },
-  { label: 'В процессе', value: 'В процессе' },
-  { label: 'Загружен', value: 'Загружен' }
-]
-
-const filteredDocuments = computed(() => {
-  if (filterStatus.value === 'all') return documents.value
-  return documents.value.filter(doc => doc.analysisStatus === filterStatus.value)
+// Статистика
+const totalDocs = computed(() => documents.value.length)
+const highRiskCount = computed(() => {
+  // Пример: считаем высокорисковыми те документы, у которых ключевых требований больше 5
+  return documents.value.filter(doc => (doc.key_requirements?.length || 0) > 5).length
 })
 
-// Подсчёт статистики
-const totalDocs = computed(() => documents.value.length)
-const analyzedDocs = computed(() => documents.value.filter(d => d.analysisStatus === 'Завершён').length)
-const highRiskDocs = computed(() => documents.value.filter(d => d.risk === 'Высокий риск').length)
-
-// Вспомогательные функции для отображения статусов и рисков
-function getStatusSeverity(status) {
-  switch (status) {
-    case 'Завершён': return 'success'
-    case 'В процессе': return 'warning'
-    case 'Загружен': return 'info'
-    default: return 'secondary'
+// Загрузка списка анализов с сервера
+async function loadDocuments() {
+  loading.value = true
+  try {
+    const response = await axios.get('http://localhost:8000/user/documents', {
+      withCredentials: true
+    });
+    documents.value = response.data
+  } catch (error) {
+    console.error('Ошибка загрузки:', error)
+    let msg = 'Не удалось загрузить список документов'
+    if (error.response?.status === 401) {
+      msg = 'Сессия истекла. Перенаправление на страницу входа...'
+      toast.add({ severity: 'error', summary: 'Ошибка', detail: msg, life: 3000 })
+      setTimeout(() => {
+        localStorage.removeItem('user_email')
+        localStorage.removeItem('user_name')
+        window.location.href = '/'
+      }, 2000)
+    } else if (error.response?.data?.detail) {
+      msg = error.response.data.detail
+      toast.add({ severity: 'error', summary: 'Ошибка', detail: msg, life: 5000 })
+    } else {
+      toast.add({ severity: 'error', summary: 'Ошибка', detail: msg, life: 5000 })
+    }
+  } finally {
+    loading.value = false
   }
-}
-
-function getRiskClass(risk) {
-  if (risk === 'Высокий риск') return 'risk-high-text'
-  if (risk === 'Средний риск') return 'risk-medium-text'
-  if (risk === 'Низкий риск') return 'risk-low-text'
-  return ''
 }
 
 // Диалог деталей
@@ -238,6 +179,10 @@ function showDetails(doc) {
   selectedDoc.value = doc
   detailsDialog.value = true
 }
+
+onMounted(() => {
+  loadDocuments()
+})
 </script>
 
 <style scoped>
@@ -315,45 +260,39 @@ function showDetails(doc) {
   flex-wrap: wrap;
   gap: 1rem;
 }
-.filter-group {
-  display: flex;
-  gap: 0.5rem;
-}
 
+.dialog-content h3 {
+  margin-top: 0;
+}
 .dialog-content p {
   margin: 0.5rem 0;
 }
 .analysis-block {
   margin-top: 1rem;
 }
-.analysis-placeholder {
+.requirement-section {
+  margin-bottom: 1rem;
+}
+.requirement-list {
+  list-style: disc;
+  margin: 0.5rem 0 1rem 1.5rem;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
   background: #f1f5f9;
-  padding: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+}
+.key-requirements {
+  list-style: circle;
+  color: #0f3b5c;
+  font-weight: 500;
+}
+.empty-msg {
+  background: #f1f5f9;
+  padding: 0.5rem;
   border-radius: 8px;
-  margin-top: 0.5rem;
-}
-.risk-high {
-  color: #b91c1c;
-}
-.risk-medium {
-  color: #b45309;
-}
-.risk-low {
-  color: #1f7840;
-}
-.risk-high-text {
-  color: #b91c1c;
-  font-weight: 600;
-}
-.risk-medium-text {
-  color: #b45309;
-  font-weight: 600;
-}
-.risk-low-text {
-  color: #1f7840;
-  font-weight: 600;
-}
-.text-muted {
-  color: #94a3b8;
+  color: #64748b;
+  margin-top: 0.25rem;
 }
 </style>

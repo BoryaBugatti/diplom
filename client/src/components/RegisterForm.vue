@@ -12,31 +12,13 @@
 
         <template #content>
           <Form class="flex flex-column gap-4">
-            <!-- Поле email/username -->
-            <FormField v-slot="$field" name="login" initial-value="">
-              <label for="login" class="font-semibold block mb-1">Email</label>
-              <InputText
-                id="login"
-                type="text"
-                placeholder="ivan@example.com"
-                fluid
-                :class="{ 'p-invalid': $field?.invalid }"
-              />
-              <Message
-                v-if="$field?.invalid"
-                severity="error"
-                size="small"
-                variant="simple"
-              >
-                {{ $field.error?.message }}
-              </Message>
-            </FormField>
 
-            <FormField v-slot="$field" name="login" initial-value="">
-              <label for="login" class="font-semibold block mb-1">name</label>
+            <FormField v-slot="$field" name="FullName" initial-value="">
+              <label for="login" class="font-semibold block mb-1">ФИО</label>
               <InputText
-                id="login"
-                type="email"
+                id="FullName"
+                type="text"
+                v-model="UserName"
                 placeholder="Ляпин Борис Сергеевич"
                 fluid
                 :class="{ 'p-invalid': $field?.invalid }"
@@ -51,10 +33,33 @@
               </Message>
             </FormField>
 
+            <FormField v-slot="$field" name="email" initial-value="">
+              <label for="login" class="font-semibold block mb-1">Email</label>
+              <InputText
+                id="email"
+                type="email"
+                v-model="UserEmail"
+                placeholder="ivan@example.com"
+                fluid
+                :class="{ 'p-invalid': $field?.invalid }"
+              />
+              <Message
+                v-if="$field?.invalid"
+                severity="error"
+                size="small"
+                variant="simple"
+              >
+                {{ $field.error?.message }}
+              </Message>
+            </FormField>
+
+            
+
             <FormField v-slot="$field" name="password" initial-value="">
               <label for="password" class="font-semibold block mb-1">Пароль</label>
               <Password
                 id="password"
+                v-model="UserPassword"
                 placeholder="••••••••"
                 :feedback="false"
                 toggle-mask
@@ -75,7 +80,7 @@
               <a href="#" class="text-sm text-primary hover:underline">Забыли пароль?</a>
             </div>
 
-            <Button type="submit" label="Зарегистрироваться" icon="pi pi-sign-in" class="w-full" size="large" />
+            <Button type="submit" label="Зарегистрироваться" icon="pi pi-sign-in" class="w-full" size="large" @click="Reg"/>
 
             <Divider align="center" type="dashed">
               <span class="text-color-secondary text-sm">или</span>
@@ -94,15 +99,38 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import Card from 'primevue/card'
 import Form from '@primevue/forms/form'
 import FormField from '@primevue/forms/formfield'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
-import Checkbox from 'primevue/checkbox'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
+import axios from 'axios'
+
+const router = useRouter();
+
+const UserName = ref('');
+const UserEmail = ref('');
+const UserPassword = ref('');
+
+const Reg = async () => {
+  const response = await axios.post("http://127.0.0.1:8000/reg", {
+    user_email: UserEmail.value,
+    user_name: UserName.value,
+    user_password: UserPassword.value
+  });
+  if (response.data.status == "OK"){
+    UserName = '';
+    UserEmail = '';
+    UserPassword = '';
+    alert('Вы успешно зарегистрировались, теперь вы будете перенаправлены на странциу авторизации');
+    router.push('/');
+  }
+  alert(reponse.data.status);
+}
 
 </script>
 

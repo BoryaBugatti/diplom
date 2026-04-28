@@ -61,7 +61,7 @@
               <a href="#" class="text-sm text-primary hover:underline">Забыли пароль?</a>
             </div>
 
-            <Button type="submit" label="Войти" icon="pi pi-sign-in" class="w-full" size="large" />
+            <Button type="submit" label="Войти" icon="pi pi-sign-in" class="w-full" size="large" @click="LogIn"/>
 
             <Divider align="center" type="dashed">
               <span class="text-color-secondary text-sm">или</span>
@@ -80,6 +80,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import Card from 'primevue/card'
 import Form from '@primevue/forms/form'
@@ -91,18 +92,31 @@ import Checkbox from 'primevue/checkbox'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
 
+
+const router = useRouter();
 const remember = ref(false);
 const password = ref();
+
+
+
 const email = ref();
 
-const LogIn = async () => {
-  const response = await axios.post("http://127.0.0.1:8000", {
-    user_email: email.value,
-    user_password: password.value
-  });
-  alert(response.data);
+async function LogIn() {
+  try {
+    const response = await axios.post('http://localhost:8000/auth/login', {
+      user_email: email.value,
+      user_password: password.value
+    });
+    const token = response.data.access_token;
+    localStorage.setItem('access_token', token);
+    localStorage.setItem('user_name', response.data.user_name);
+    localStorage.setItem('user_role', response.data.user_role);
+    localStorage.setItem('user_email', response.data.user_email);
+    router.push('/MainPage');
+  } catch (error) {
+    alert(error);
+  }
 }
-
 </script>
 
 <style scoped>

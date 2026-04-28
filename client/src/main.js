@@ -1,6 +1,7 @@
 import './assets/main.css'
 
 import { createApp } from 'vue'
+import axios from 'axios'
 import App from './App.vue'
 import router from './router'
 import PrimeVue from 'primevue/config'; 
@@ -18,6 +19,15 @@ app.use(PrimeVue, {
             darkModeSelector: '.my-app-dark' 
         }
     }
+});
+
+
+axios.interceptors.request.use(config => {
+  const token = localStorage.getItem('access_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 app.use(router)

@@ -75,19 +75,18 @@
         </template>
       </Card>
     </div>
-
-
     <Dialog 
       v-model:visible="detailsDialog" 
       header="Детали анализа документа" 
       :modal="true" 
-      :style="{ width: '700px' }"
+      :style="{ width: '750px' }"
+      @after-open="loadReview"
     >
       <div v-if="selectedDoc" class="dialog-content">
         <h3>{{ selectedDoc.file_name }}</h3>
         <p><strong>Название тендера:</strong> {{ selectedDoc.tender_name || '—' }}</p>
         <p><strong>Описание тендера:</strong> {{ selectedDoc.tender_description || '—' }}</p>
-        <p><strong>Дата анализа:</strong> {{ selectedDoc.created_at }}</p>
+        <p><strong>Дата анализа:</strong> {{ formatDate(selectedDoc.created_at) }}</p>
         
         <div class="analysis-block">
           <div class="requirement-section">
@@ -105,9 +104,49 @@
             <div v-else class="empty-msg">Ключевые требования не выделены</div>
           </div>
         </div>
+
+        <Divider />
+
+        <!-- Блок отзыва -->
+        <div class="review-section">
+          <h4>Ваш отзыв об анализе</h4>
+          <div class="rating-stars">
+            <span 
+              v-for="star in 5" 
+              :key="star"
+              :class="['star', { 'star-filled': star <= reviewRating }]"
+              @click="reviewRating = star"
+            >
+              ★
+            </span>
+          </div>
+          <Textarea 
+            v-model="reviewComment" 
+            rows="3" 
+            placeholder="Оставьте комментарий (необязательно)"
+            class="review-textarea"
+          />
+          <div class="review-buttons">
+            <Button 
+              label="Сохранить отзыв" 
+              icon="pi pi-save" 
+              severity="primary" 
+              :loading="savingReview"
+              @click="saveReview"
+            />
+            <Button 
+              v-if="hasExistingReview"
+              label="Удалить отзыв" 
+              icon="pi pi-trash" 
+              severity="danger" 
+              text 
+              @click="deleteReview"
+            />
+          </div>
+        </div>
       </div>
       <template #footer>
-        <Button label="Закрыть" icon="pi pi-times" @click="detailsDialog = false" autofocus />
+        <Button label="Закрыть" icon="pi pi-times" @click="closeDialog" autofocus />
       </template>
     </Dialog>
 
@@ -124,6 +163,8 @@ import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
+import Textarea from 'primevue/textarea'
+import Divider from 'primevue/divider'
 import Toast from 'primevue/toast'
 
 const toast = useToast()
@@ -131,13 +172,10 @@ const userName = ref(localStorage.getItem('user_name') || 'Пользовате�
 const documents = ref([])
 const loading = ref(false)
 
-
 const totalDocs = computed(() => documents.value.length)
 const highRiskCount = computed(() => {
-
   return documents.value.filter(doc => (doc.key_requirements?.length || 0) > 5).length
 })
-
 
 async function loadDocuments() {
   loading.value = true
@@ -168,13 +206,85 @@ async function loadDocuments() {
   }
 }
 
-// Диалог деталей
 const detailsDialog = ref(false)
 const selectedDoc = ref(null)
+
+const reviewRating = ref(5)
+const reviewComment = ref('')
+const hasExistingReview = ref(false)
+const savingReview = ref(false)
+
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  return new Date(dateStr).toLocaleString('ru-RU')
+}
+
+async function loadReview() {
+  if (!selectedDoc.value) return
+  try {
+    const response = await axios.get(`http://localhost:8000/reviews/${selectedDoc.value.id}`, {
+      withCredentials: true
+    })
+    if (response.data) {
+      reviewRating.value = response.data.rating
+      reviewComment.value = response.data.comment || ''
+      hasExistingReview.value = true
+    } else {
+      reviewRating.value = 5
+      reviewComment.value = ''
+      hasExistingReview.value = false
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки отзыва:', error)
+    reviewRating.value = 5
+    reviewComment.value = ''
+    hasExistingReview.value = false
+  }
+}
+
+async function saveReview() {
+  if (!selectedDoc.value) return
+  savingReview.value = true
+  try {
+    await axios.post(`http://localhost:8000/reviews/${selectedDoc.value.id}`, {
+      rating: reviewRating.value,
+      comment: reviewComment.value
+    }, { withCredentials: true })
+    toast.add({ severity: 'success', summary: 'Успешно', detail: 'Отзыв сохранён', life: 3000 })
+    hasExistingReview.value = true
+  } catch (error) {
+    console.error('Ошибка сохранения отзыва:', error)
+    toast.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось сохранить отзыв', life: 5000 })
+  } finally {
+    savingReview.value = false
+  }
+}
+
+async function deleteReview() {
+  if (!selectedDoc.value) return
+  try {
+    await axios.delete(`http://localhost:8000/reviews/${selectedDoc.value.id}`, { withCredentials: true })
+    toast.add({ severity: 'success', summary: 'Удалено', detail: 'Отзыв удалён', life: 3000 })
+    hasExistingReview.value = false
+    reviewRating.value = 5
+    reviewComment.value = ''
+  } catch (error) {
+    console.error('Ошибка удаления отзыва:', error)
+    toast.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось удалить отзыв', life: 5000 })
+  }
+}
 
 function showDetails(doc) {
   selectedDoc.value = doc
   detailsDialog.value = true
+}
+
+function closeDialog() {
+  detailsDialog.value = false
+  selectedDoc.value = null
+  reviewRating.value = 5
+  reviewComment.value = ''
+  hasExistingReview.value = false
 }
 
 onMounted(() => {
@@ -291,5 +401,34 @@ onMounted(() => {
   border-radius: 8px;
   color: #64748b;
   margin-top: 0.25rem;
+}
+.review-section {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 12px;
+}
+.rating-stars {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 1rem;
+  cursor: pointer;
+}
+.star {
+  font-size: 28px;
+  color: #cbd5e1;
+  transition: color 0.2s;
+}
+.star-filled {
+  color: #fbbf24;
+}
+.review-textarea {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+.review-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
 }
 </style>
